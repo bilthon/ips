@@ -1,0 +1,21 @@
+{
+  "name": "ips",
+  "version": "0.0.1",
+  "description": "utility to grab and parse IPS public data",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "ips",
+    "paraguay"
+  ],
+  "author": "Nelson R. Pérez",
+  "license": "ISC",
+  "dependencies": {
+    "html-to-json": "0.4.0",
+    "iconv": "2.1.8",
+    "iconv-lite": "^0.4.10",
+    "request": "2.58.0"
+  }
+}
