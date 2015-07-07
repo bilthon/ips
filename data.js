@@ -1,7 +1,6 @@
 var http = require('http');
 var htmlToJson = require('html-to-json');
 var fs = require('fs');
-// var iconv = require('iconv');
 var iconv = require('iconv-lite')
 var request = require('request');
 
@@ -10,19 +9,38 @@ var IPS_PATH = '/nomina/nomina2.php?pag=';
 var IPS_PAGES = 17;
 var COLUMN_COUNT = 21
 
-var data_file = 'nomina.html';
-var MAX_ELAPSED_TIME = 1000*60*60*24;
+var DATA_FILE = 'nomina.html';
+var JSON_FILE = 'nomina.json';
+
+exports.JSON_FILE = JSON_FILE;
+
+var MAX_ELAPSED_TIME = 1000*60*60*24*30;
 
 var pagesCounter = 1;
 
+var people = [];
 var person = {};
+var headers = [];
 
-var requestPage = function(){
+iconv.extendNodeEncodings();
 
+exports.obtainData = function(){
+	if(fs.existsSync(DATA_FILE)){
+		var now = new Date();
+		var elapsed = now - fs.statSync(DATA_FILE).mtime;
+		console.log('elapsed time since last file refresh: '+elapsed/1000+' seconds');
+		if(elapsed > MAX_ELAPSED_TIME){
+			// refresh and parse file
+			fs.unlinkSync(DATA_FILE);
+			downloadData(parseData);
+		}else{
+			// parse file
+			parseData();
+		}
+	}else{
+		downloadData(parseData);
+	}	
 }
-
-var buffer;
-iconv.extendNodeEncodings(); 
 
 function char_convert(str_to_convert){
     var chars = ["©","Û","®","ž","Ü","Ÿ","Ý","$","Þ","%","¡","ß","¢","à","£","á","À","¤","â","Á","¥","ã","Â","¦","ä","Ã","§","å","Ä","¨","æ","Å","©","ç","Æ","ª","è","Ç","«","é","È","¬","ê","É","­","ë","Ê","®","ì","Ë","¯","í","Ì","°","î","Í","±","ï","Î","²","ð","Ï","³","ñ","Ð","´","ò","Ñ","µ","ó","Õ","¶","ô","Ö","·","õ","Ø","¸","ö","Ù","¹","÷","Ú","º","ø","Û","»","ù","Ü","@","¼","ú","Ý","½","û","Þ","€","¾","ü","ß","¿","ý","à","‚","À","þ","á","ƒ","Á","ÿ","å","„","Â","æ","…","Ã","ç","†","Ä","è","‡","Å","é","ˆ","Æ","ê","‰","Ç","ë","Š","È","ì","‹","É","í","Œ","Ê","î","Ë","ï","Ž","Ì","ð","Í","ñ","Î","ò","‘","Ï","ó","’","Ð","ô","“","Ñ","õ","”","Ò","ö","•","Ó","ø","–","Ô","ù","—","Õ","ú","˜","Ö","û","™","×","ý","š","Ø","þ","›","Ù","ÿ","œ","Ú"]; 
@@ -33,10 +51,11 @@ function char_convert(str_to_convert){
 	}
 	return result;
 }
+
 /*
 * Function used to download the data in case it is not already loaded
 */
-var downloadData = function(callback){
+function downloadData(callback){
 	console.log('downloading data..');
 
 	var options = {
@@ -50,7 +69,7 @@ var downloadData = function(callback){
   			console.log('Got page number: '+pagesCounter);
 			var str = iconv.decode(body, "iso-8859-1");
 			var converted = char_convert(str);
-			fs.writeFileSync(data_file, converted, {flag:'a'});
+			fs.writeFileSync(DATA_FILE, converted, {flag:'a'});
 			pagesCounter = pagesCounter + 1;
 			if(pagesCounter > IPS_PAGES)
 				callback();
@@ -64,71 +83,43 @@ var downloadData = function(callback){
 }
 
 /* Function used to parse the file */
-var parseData = function(){
-	var KEYS = [];
-	var people = [];
-	var data = fs.readFileSync(data_file).toString('utf8')
-	var promise = htmlToJson.parse(data, {
-	    'content':function($doc, $){
-	    	$('.datagrid').find('thead').children().children().each(function(index, element){
-	    		if(KEYS.length < COLUMN_COUNT){
-	    			KEYS.push($(this).contents());
-	    		}
-	    	});
-			var skipped = 0;
-			var line = 0;
-			var column = 0;
-			var counter = 0;
-			$('.datagrid').find('td').each(function(i,e){
-				if($(this).attr('align') != undefined){
-					counter = i - skipped;
-					var f = (counter) / (KEYS.length);
-					line = parseInt((counter) / (KEYS.length));
-					column = parseInt(counter % (KEYS.length));
-					if($(this).children().length == 1)
-						person[KEYS[column]] = $(this).find('a').contents()
-					else
-						person[KEYS[column]] = $(this).contents();
-					if(column+1 == KEYS.length){
-						// console.log('pushing new person. line: '+line+', column: '+column+', counter: '+counter+', f: '+f+', people length: '+people.length+', name: '+person[KEYS[1]]);
-						people.push(person);
-						console.log(JSON.stringify(person));
-						person = {};
-					}
-				}else{
-					skipped = skipped + 1;
+function parseData(){
+	var data = fs.readFileSync(DATA_FILE).toString('utf8')
+
+	/* Parsing the table header */
+	htmlToJson.parse(data, function(){
+		this.map('div.datagrid > table > thead > tr', function($item){
+			$item.children().each(function(i, element){
+				if(headers.length < COLUMN_COUNT){
+					headers.push(element['children'][0]['data']);
 				}
-    		})
-    		var random_index = Math.floor(Math.random()*people.length-1)
-    		console.log('random person: '+people[random_index][KEYS[1]]+', random index: '+random_index);
-    		console.log('last person: '+people[people.length-1][KEYS[1]]);
-    		console.log('people count: '+people.length);
-	        return people;
-	    }
-	},
-	    function(result){
-	        console.log('result callback: '+result);
-	    }
-	);
-
-	promise.done(function(res){
-		console.log('promise done. result: '+res);
-		console.log('result length: '+res.contents);
+			});
+		});
 	});
-}
 
-if(fs.existsSync(data_file)){
-	var now = new Date();
-	var elapsed = now - fs.statSync(data_file).mtime;
-	console.log('elapsed time since last file refresh: '+elapsed/1000+' seconds');
-	if(elapsed > MAX_ELAPSED_TIME){
-		// refresh and parse file
-		fs.unlinkSync(data_file);
-		downloadData(parseData);
-	}else{
-		// parse file
-		parseData();
-	}
-}else{
-	downloadData(parseData);
+	/* Parsing table data */
+	htmlToJson.parse(data, function(){
+		return this.map('td', function ($item){
+			if($item.parent().parent().is('tbody') == true){
+				return $item.text();
+			}
+		});
+	}).done(function(result){
+		var filtered = result.filter(function(element, index, array){
+			if(element != undefined)
+				return true;
+			else
+				false;
+		});
+		console.log('Resulting array has: '+filtered.length+' items. Meaning it has : '+(filtered.length/COLUMN_COUNT)+' people');
+		for(var i = 0; i < filtered.length; i++){
+			person[headers[i % COLUMN_COUNT]] = filtered[i].trim();
+			if((i+1) % COLUMN_COUNT == 0){
+				people.push(person);
+				person = {};
+			}
+		}
+		console.log('Parsed '+people.length+' people.');
+		fs.writeFileSync(JSON_FILE, JSON.stringify(people));
+	});
 }

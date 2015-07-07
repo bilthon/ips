@@ -1,3 +1,5 @@
-nomina.html
+.DS_Store
+*.json
 node_modules/*
 original.html
+nomina.html
