@@ -1,6 +1,6 @@
 var fs = require('fs');
 var numeral = require('numeral');
-var data = require('./data');
+var data = require('./data-source');
 var gauss = require('gauss');
 var _ = require('lodash');
 
@@ -10,7 +10,10 @@ function onDataRead(err, data){
 	if(!err){
 		var people = JSON.parse(data);
 		// getTotalSalaries(people);
+		var d1 = new Date();
 		getProfessionCount(people);
+		var d2 = new Date();
+		console.log(d2.getMilliseconds()-d1.getMilliseconds());
 		// getSalariesByProfession(people);
 	}else{
 		console.error(err);
