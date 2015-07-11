@@ -24,7 +24,10 @@ var headers = [];
 
 iconv.extendNodeEncodings();
 
-exports.obtainData = function(){
+exports.obtainData = function(destination_file){
+	if(destination_file != undefined)
+		JSON_FILE = destination_file;
+	
 	if(fs.existsSync(DATA_FILE)){
 		var now = new Date();
 		var elapsed = now - fs.statSync(DATA_FILE).mtime;

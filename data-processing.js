@@ -4,7 +4,10 @@ var data = require('./data-source');
 var gauss = require('gauss');
 var _ = require('lodash');
 
-fs.readFile(data.JSON_FILE, onDataRead);
+
+exports.process_data =  function(json_file){
+	fs.readFile(json_file, onDataRead);
+}
 
 function onDataRead(err, data){
 	if(!err){
