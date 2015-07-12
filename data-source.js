@@ -24,26 +24,32 @@ var headers = [];
 
 iconv.extendNodeEncodings();
 
-function obtainData(destination_file, callback){
+function obtainData(destination_file, remove_old, callback){
 	if(destination_file != undefined)
 		JSON_FILE = destination_file;
 
 	if(fs.existsSync(DATA_FILE)){
 		var now = new Date();
 		var elapsed = now - fs.statSync(DATA_FILE).mtime;
-		if(elapsed > MAX_ELAPSED_TIME){
+		if(elapsed > MAX_ELAPSED_TIME || remove_old === true){
 			// refresh and parse file
 			fs.unlinkSync(DATA_FILE);
 			console.log('downloading data again');
-			downloadData(parseData);
+			downloadData(packCallbacks(parseData, callback), true);
 		}else{
 			// parse file
 			console.log('parsing existing file');
 			parseData(callback);
 		}
 	}else{
-		downloadData(parseData);
-	}	
+		downloadData(packCallbacks(parseData, callback));
+	}
+
+	function packCallbacks(fn, cb){
+		return function(){
+			return fn(cb);
+		}
+	}
 }
 
 function char_convert(str_to_convert){
@@ -59,8 +65,13 @@ function char_convert(str_to_convert){
 /*
 * Function used to download the data in case it is not already loaded
 */
-function downloadData(callback){
-	console.log('downloading data..');
+function downloadData(callback, remove_old){
+	if(remove_old !== undefined && remove_old == true){
+		if(fs.existsSync(DATA_FILE)){
+			console.log('deleting existing file');
+			fs.unlinkSync(DATA_FILE);
+		}
+	}
 
 	var options = {
 		uri: 'http://'+IPS_HOST+IPS_PATH+pagesCounter,
@@ -73,17 +84,17 @@ function downloadData(callback){
   			console.log('Got page number: '+pagesCounter);
 			var str = iconv.decode(body, "iso-8859-1");
 			var converted = char_convert(str);
-			fs.writeFileSync(DATA_FILE, converted, {flag:'a'});
-			pagesCounter = pagesCounter + 1;
-			if(pagesCounter > IPS_PAGES)
-				callback();
-			else
-				downloadData(callback);
-
+			fs.writeFile(DATA_FILE, converted, {flag:'a'}, function(err){
+				pagesCounter = pagesCounter + 1;
+				if(pagesCounter > IPS_PAGES)
+					callback();
+				else
+					downloadData(callback);
+			});
   		}else{
   			console.log('error. code: '+response.statusCode);
   		}
-	})
+	});
 }
 
 /* Function used to parse the file */
@@ -127,8 +138,9 @@ function parseData(callback){
 				console.log('parsed '+people.length+' people.');
 				fs.writeFile(JSON_FILE, JSON.stringify(people), function(err, data){
 					if(!err){
-						console.log('JSON file sucessfully saved to disk');
-						callback(JSON.stringify(people));
+						console.log('json file sucessfully saved to disk');
+						if(callback != undefined)
+							callback(JSON.stringify(people));
 					}else{
 						console.error('Error writing parsed JSON file');
 					}
@@ -140,5 +152,6 @@ function parseData(callback){
 	});
 }
 
-exports.obtainData = obtainData;
 exports.downloadData = downloadData;
+exports.parseData = parseData;
+exports.obtainData = obtainData;
