@@ -24,21 +24,22 @@ var headers = [];
 
 iconv.extendNodeEncodings();
 
-exports.obtainData = function(destination_file){
+function obtainData(destination_file, callback){
 	if(destination_file != undefined)
 		JSON_FILE = destination_file;
-	
+
 	if(fs.existsSync(DATA_FILE)){
 		var now = new Date();
 		var elapsed = now - fs.statSync(DATA_FILE).mtime;
-		console.log('elapsed time since last file refresh: '+elapsed/1000+' seconds');
 		if(elapsed > MAX_ELAPSED_TIME){
 			// refresh and parse file
 			fs.unlinkSync(DATA_FILE);
+			console.log('downloading data again');
 			downloadData(parseData);
 		}else{
 			// parse file
-			parseData();
+			console.log('parsing existing file');
+			parseData(callback);
 		}
 	}else{
 		downloadData(parseData);
@@ -86,43 +87,58 @@ function downloadData(callback){
 }
 
 /* Function used to parse the file */
-function parseData(){
-	var data = fs.readFileSync(DATA_FILE).toString('utf8')
-
-	/* Parsing the table header */
-	htmlToJson.parse(data, function(){
-		this.map('div.datagrid > table > thead > tr', function($item){
-			$item.children().each(function(i, element){
-				if(headers.length < COLUMN_COUNT){
-					headers.push(element['children'][0]['data']);
-				}
+function parseData(callback){
+	fs.readFile(DATA_FILE, function(err, data){
+		if(!err){
+			console.log('parsing the table headers');
+			/* Parsing the table header */
+			htmlToJson.parse(data.toString('utf8'), function(){
+				this.map('div.datagrid > table > thead > tr', function($item){
+					$item.children().each(function(i, element){
+						if(headers.length < COLUMN_COUNT){
+							headers.push(element['children'][0]['data']);
+						}
+					});
+				});
 			});
-		});
-	});
 
-	/* Parsing table data */
-	htmlToJson.parse(data, function(){
-		return this.map('td', function ($item){
-			if($item.parent().parent().is('tbody') == true){
-				return $item.text();
-			}
-		});
-	}).done(function(result){
-		var filtered = result.filter(function(element, index, array){
-			if(element != undefined)
-				return true;
-			else
-				false;
-		});
-		console.log('Resulting array has: '+filtered.length+' items. Meaning it has : '+(filtered.length/COLUMN_COUNT)+' people');
-		for(var i = 0; i < filtered.length; i++){
-			person[headers[i % COLUMN_COUNT]] = filtered[i].trim();
-			if((i+1) % COLUMN_COUNT == 0){
-				people.push(person);
-				person = {};
-			}
+			console.log('parsing the table data');
+			/* Parsing table data */
+			htmlToJson.parse(data.toString('utf8'), function(){
+				return this.map('td', function ($item){
+					if($item.parent().parent().is('tbody') == true){
+						return $item.text();
+					}
+				});
+			}).done(function(result){
+				var filtered = result.filter(function(element, index, array){
+					if(element != undefined)
+						return true;
+					else
+						false;
+				});
+				for(var i = 0; i < filtered.length; i++){
+					person[headers[i % COLUMN_COUNT]] = filtered[i].trim();
+					if((i+1) % COLUMN_COUNT == 0){
+						people.push(person);
+						person = {};
+					}
+				}
+				console.log('parsed '+people.length+' people.');
+				fs.writeFile(JSON_FILE, JSON.stringify(people), function(err, data){
+					if(!err){
+						console.log('JSON file sucessfully saved to disk');
+						callback(JSON.stringify(people));
+					}else{
+						console.error('Error writing parsed JSON file');
+					}
+				})
+			});
+		}else{
+			console.error('Error opening file to parse');
 		}
-		console.log('Parsed '+people.length+' people.');
-		fs.writeFileSync(JSON_FILE, JSON.stringify(people));
 	});
 }
+
+exports.obtainData = obtainData;
+exports.downloadData = downloadData;
